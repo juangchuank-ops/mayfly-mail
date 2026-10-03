@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { FlaskConical, Mail, Moon, RefreshCw, Sun } from "lucide-react";
+import { FlaskConical, History, Mail, Moon, RefreshCw, Sun } from "lucide-react";
 import { useTheme } from "./hooks/useTheme";
 import { useMailbox } from "./hooks/useMailbox";
 import { AddressPlate } from "./components/AddressPlate";
 import { MailboxSwitcher } from "./components/MailboxSwitcher";
 import { SourceDialog } from "./components/SourceDialog";
+import { HistoryDialog } from "./components/HistoryDialog";
 import { MailList } from "./components/MailList";
 import { Reader } from "./components/Reader";
 import { Toast } from "./components/Toast";
@@ -22,6 +23,7 @@ export default function App() {
   const [confirm, setConfirm] = useState<ConfirmTarget>(null);
   const [retrying, setRetrying] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     void mb.bootstrap();
@@ -54,6 +56,16 @@ export default function App() {
           <h1 className="brand-name">蜉蝣邮</h1>
           <span className="brand-tag">一次性地址，收完即走</span>
         </div>
+        <button
+          type="button"
+          className="topbar-link"
+          onClick={() => setHistoryOpen(true)}
+          aria-label={`历史邮箱（${mb.retiredEntries.length} 个）`}
+        >
+          <History size={14} aria-hidden />
+          历史
+          {mb.retiredEntries.length > 0 && <span className="topbar-count">{mb.retiredEntries.length}</span>}
+        </button>
         <div className="topbar-actions">
           <button
             type="button"
@@ -101,17 +113,20 @@ export default function App() {
             onEnterDemo={() => void mb.enterDemo()}
             switcher={
               <MailboxSwitcher
-                rows={mb.entries.map((e) => ({
-                  id: e.id,
-                  address: e.address,
-                  sourceName:
-                    e.mode === "demo"
-                      ? "演示"
-                      : (mb.sources.find((s) => s.id === e.sourceId)?.name ?? "未知来源"),
-                  mode: e.mode,
-                  unread: e.id === mb.activeId ? mb.unreadCount : (mb.unreadByBox[e.id] ?? null),
-                  active: e.id === mb.activeId,
-                }))}
+                rows={mb.entries
+                  .filter((e) => !e.retiredAt || e.id === mb.activeId)
+                  .map((e) => ({
+                    id: e.id,
+                    address: e.address,
+                    sourceName:
+                      (e.mode === "demo"
+                        ? "演示"
+                        : (mb.sources.find((s) => s.id === e.sourceId)?.name ?? "未知来源")) +
+                      (e.retiredAt ? " · 历史" : ""),
+                    mode: e.mode,
+                    unread: e.id === mb.activeId ? mb.unreadCount : (mb.unreadByBox[e.id] ?? null),
+                    active: e.id === mb.activeId,
+                  }))}
                 realSources={mb.sources.map((s) => ({ id: s.id, name: s.name }))}
                 busy={mb.creating || mb.switching}
                 syncing={mb.syncingCounts}
@@ -184,7 +199,7 @@ export default function App() {
             ? "删除后无法恢复。如果只是想稍后再看，可以先「标记未读」。"
             : confirm?.kind === "remove-box"
               ? "移除后本机不再保存它的凭据，该地址将无法继续收信（服务端的邮件仍保留在自建服务里）。"
-              : "会为当前数据源生成一个全新的地址并立即切换，旧地址立即作废，里面已有的邮件将无法找回。"
+              : "会为当前数据源生成一个全新的地址并立即切换；旧地址移入「历史」，保留 24 小时后自动删除。"
         }
         confirmText={
           confirm?.kind === "delete" ? "删除" : confirm?.kind === "remove-box" ? "移除" : "生成新地址"
@@ -208,6 +223,24 @@ export default function App() {
           mb.notify(`数据源「${s.name}」已添加`);
         }}
         onDelete={(id) => void mb.deleteSource(id)}
+      />
+
+      <HistoryDialog
+        open={historyOpen}
+        rows={mb.retiredEntries.map((e) => ({
+          id: e.id,
+          address: e.address,
+          sourceName:
+            e.mode === "demo"
+              ? "演示"
+              : (mb.sources.find((s) => s.id === e.sourceId)?.name ?? "未知来源"),
+          retiredAt: e.retiredAt ?? 0,
+          active: e.id === mb.activeId,
+        }))}
+        busy={mb.switching}
+        onSwitch={(id) => void mb.switchTo(id)}
+        onDelete={(id) => void mb.removeBox(id)}
+        onClose={() => setHistoryOpen(false)}
       />
     </div>
   );

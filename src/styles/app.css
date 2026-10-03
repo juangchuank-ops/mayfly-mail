@@ -108,6 +108,36 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* 顶栏文字链接（历史邮箱入口），跟随品牌的中性色，不使用彩色 */
+.topbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.topbar-link:hover {
+  color: var(--ink);
+  background: var(--fill-hover);
+}
+
+.topbar-count {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: var(--fs-12);
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .topbar-actions {
   margin-left: auto;
   display: flex;
@@ -1343,6 +1373,69 @@ button:disabled {
   justify-content: flex-end;
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
+}
+
+/* ============ 历史邮箱面板 ============ */
+
+.history-dialog {
+  width: min(560px, 100%);
+}
+
+.history-empty {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--ink-3);
+  font-size: var(--fs-13);
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.history-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.history-when {
+  font-size: var(--fs-12);
+  color: var(--ink-3);
+}
+
+.history-ttl {
+  font-size: var(--fs-12);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
 }
 
 .dialog-actions {

@@ -13,6 +13,8 @@ const STORE_KEY = "mayfly.mailboxes";
 const LEGACY_STORE_KEY = "mayfly.mailbox";
 const POLL_MS = 15_000;
 const FRESH_WINDOW = 10 * 60_000;
+/** 更换下来的旧邮箱在「历史」中保留的时长，到期自动删除。 */
+export const RETIRE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const BUILTIN_SOURCE_ID = "builtin";
 const DEMO_SOURCE_ID = "demo";
@@ -38,6 +40,8 @@ export interface MailboxEntry {
   address: string;
   credentials: Record<string, string>;
   createdAt: number;
+  /** 被更换下线的时间：存在此字段即处于「历史保留」状态，到期自动删除。 */
+  retiredAt?: number;
 }
 
 type Phase = "booting" | "ready" | "expired" | "demo" | "error" | "provisioning";
@@ -482,7 +486,7 @@ export function useMailbox() {
     [activate, createBox, notify],
   );
 
-  /** 更换当前邮箱的地址：同源新建一个并替换本条目（旧地址作废）。 */
+  /** 更换当前邮箱的地址：同源新建一个并切换过去；旧地址移入「历史」保留 24 小时。 */
   const createNewMailbox = useCallback(async () => {
     const snapshot = stateRef.current;
     const current = snapshot.entries.find((e) => e.id === snapshot.activeId);
@@ -491,21 +495,17 @@ export function useMailbox() {
     try {
       const entry = await createBox(current.sourceId, current.mode);
       if (entry) {
-        // 旧条目退场
-        providerByIdRef.current.delete(current.id);
-        const entries = stateRef.current.entries
-          .filter((e) => e.id !== current.id)
-          .map((e) => e);
-        // 保持新条目在原位置附近：先删旧再加新会追加到尾部，这里直接调整顺序
+        // 旧条目退役：移入历史保留 24 小时（保留凭据与 Provider，期间仍可查看）
         const oldIndex = snapshot.entries.findIndex((e) => e.id === current.id);
-        if (oldIndex >= 0) {
-          entries.splice(oldIndex, 0, entries.pop()!);
-        }
+        const retiredOld: MailboxEntry = { ...current, retiredAt: Date.now() };
+        const rest = stateRef.current.entries.filter((e) => e.id !== current.id && e.id !== entry.id);
+        rest.splice(oldIndex, 0, entry);
+        const entries = [...rest, retiredOld];
         setState((s) => ({ ...s, entries }));
         stateRef.current = { ...stateRef.current, entries };
         persist();
         await activate(entry.id, { silent: true });
-        notify(`新地址 ${entry.address} 已就绪，旧地址已作废`);
+        notify(`新地址 ${entry.address} 已就绪，旧地址保留在「历史」（24 小时后自动删除）`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "生成地址失败。";
@@ -515,6 +515,49 @@ export function useMailbox() {
       notify(message, true);
     } finally {
       setState((s) => ({ ...s, creating: false }));
+    }
+  }, [activate, createBox, notify, persist]);
+
+  /** 清理超过保留期的历史邮箱；若清理掉的是当前邮箱则自动切换/重建。 */
+  const purgeExpired = useCallback(async () => {
+    const snapshot = stateRef.current;
+    const now = Date.now();
+    const expired = snapshot.entries.filter(
+      (e) => typeof e.retiredAt === "number" && now - e.retiredAt > RETIRE_TTL_MS,
+    );
+    if (expired.length === 0) return;
+    const expiredIds = new Set(expired.map((e) => e.id));
+    expired.forEach((e) => {
+      providerByIdRef.current.delete(e.id);
+      if (provisionAbortRef.current?.id === e.id) provisionAbortRef.current.dead = true;
+    });
+    const entries = snapshot.entries.filter((e) => !expiredIds.has(e.id));
+    const unreadByBox = { ...snapshot.unreadByBox };
+    expired.forEach((e) => delete unreadByBox[e.id]);
+    setState((s) => ({ ...s, entries, unreadByBox }));
+    stateRef.current = { ...stateRef.current, entries, unreadByBox };
+    persist();
+    notify(`${expired.length} 个历史邮箱已到期，自动删除。`);
+    if (snapshot.activeId && expiredIds.has(snapshot.activeId)) {
+      const fallbackId =
+        [...entries].filter((e) => !e.retiredAt).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ??
+        entries[0]?.id ??
+        null;
+      if (fallbackId) {
+        await activate(fallbackId);
+      } else {
+        try {
+          const entry = await createBox(BUILTIN_SOURCE_ID, "real");
+          if (entry) await activate(entry.id);
+        } catch (err) {
+          setState((s) => ({
+            ...s,
+            phase: "error",
+            bootError: err instanceof Error ? err.message : "生成地址失败。",
+          }));
+          notify(err instanceof Error ? err.message : "生成地址失败。", true);
+        }
+      }
     }
   }, [activate, createBox, notify, persist]);
 
@@ -598,18 +641,27 @@ export function useMailbox() {
   const bootstrap = useCallback(async () => {
     if (bootRef.current) return;
     bootRef.current = true;
-    const stored = loadStore();
-    const sources = stored.sources.some((s) => s.id === BUILTIN_SOURCE_ID)
-      ? stored.sources
-      : [BUILTIN_SOURCE, ...stored.sources];
+    const storedRaw = loadStore();
+    const sources = storedRaw.sources.some((s) => s.id === BUILTIN_SOURCE_ID)
+      ? storedRaw.sources
+      : [BUILTIN_SOURCE, ...storedRaw.sources];
+    // 先清掉已到期（超过 24 小时）的历史邮箱
+    const now = Date.now();
+    const entries = storedRaw.entries.filter(
+      (e) => typeof e.retiredAt !== "number" || now - e.retiredAt <= RETIRE_TTL_MS,
+    );
     // 同步 ref，避免紧随其后的 activate 读到渲染前的旧 entries
-    stateRef.current = { ...stateRef.current, sources, entries: stored.entries };
-    setState((s) => ({ ...s, sources, entries: stored.entries }));
+    stateRef.current = { ...stateRef.current, sources, entries };
+    setState((s) => ({ ...s, sources, entries }));
 
     const params = new URLSearchParams(location.search);
-    const first = stored.activeId && stored.entries.some((e) => e.id === stored.activeId)
-      ? stored.activeId
-      : (stored.entries[0]?.id ?? null);
+    const fallbackId = [...entries]
+      .filter((e) => !e.retiredAt)
+      .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? entries[0]?.id ?? null;
+    const first =
+      storedRaw.activeId && entries.some((e) => e.id === storedRaw.activeId)
+        ? storedRaw.activeId
+        : fallbackId;
 
     if (first && !params.has("demo")) {
       await activate(first);
@@ -765,6 +817,14 @@ export function useMailbox() {
     if (state.messages.some((m) => m.id === deepId)) void openMessage(deepId);
   }, [state.messages, state.selectedId, state.phase, openMessage]);
 
+  // 历史邮箱保留期检查：每分钟清理一次到期条目（页面隐藏时跳过）
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (!document.hidden) void purgeExpired();
+    }, 60_000);
+    return () => clearInterval(t);
+  }, [purgeExpired]);
+
   // 浏览器返回键 / hash 变化 → 关闭阅读区
   useEffect(() => {
     const onPop = () => {
@@ -790,12 +850,17 @@ export function useMailbox() {
       ? "演示"
       : (state.sources.find((s) => s.id === activeEntry.sourceId)?.name ?? "未知来源")
     : null;
+  const retiredEntries = state.entries
+    .filter((e) => typeof e.retiredAt === "number")
+    .sort((a, b) => (b.retiredAt ?? 0) - (a.retiredAt ?? 0));
 
   return {
     ...state,
     unreadCount,
     activeEntry,
     activeSourceName,
+    retiredEntries,
+    purgeExpired,
     toast,
     dismissToast: () => setToast(null),
     notify,
