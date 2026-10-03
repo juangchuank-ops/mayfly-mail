@@ -1,0 +1,98 @@
+/*
+ * 蜉蝣邮 design tokens
+ * 严格中性灰阶：浅色 / 深色两套主题，唯一功能性色相是错误红。
+ * 字体：IBM Plex Sans（界面）+ IBM Plex Mono（地址、验证码、原文等字面量）。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* neutral surfaces — light */
+  --bg: #fcfcfc;
+  --surface: #ffffff;
+  --surface-sunken: #f2f2f2;
+  --ink: #171717;
+  --ink-2: #525252;
+  --ink-3: #8a8a8a;
+  --rule: #e5e5e5;
+  --rule-strong: #d4d4d4;
+  --fill-hover: #f5f5f5;
+  --fill-active: #ebebeb;
+  --plate-bg: #171717;
+  --plate-ink: #fafafa;
+  --plate-ink-2: #a3a3a3;
+  --scrim: rgba(23, 23, 23, 0.44);
+
+  /* functional */
+  --danger: #b3261e;
+  --danger-ink: #b3261e;
+  --danger-fill: #fbf1f0;
+
+  /* focus ring uses ink, not blue */
+  --focus: #171717;
+
+  /* type */
+  --font-ui: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-15: 0.9375rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-21: 1.3125rem;
+  --fs-26: 1.625rem;
+
+  /* rhythm */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  --topbar-h: 64px;
+  --list-w: 384px;
+  --radius: 4px;
+  --radius-lg: 6px;
+
+  --dur: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface-sunken: #141414;
+  --ink: #f5f5f5;
+  --ink-2: #b8b8b8;
+  --ink-3: #7d7d7d;
+  --rule: #2a2a2a;
+  --rule-strong: #3a3a3a;
+  --fill-hover: #232323;
+  --fill-active: #2b2b2b;
+  --plate-bg: #f5f5f5;
+  --plate-ink: #111111;
+  --plate-ink-2: #525252;
+  --scrim: rgba(0, 0, 0, 0.56);
+
+  --danger: #f2b8b5;
+  --danger-ink: #f2b8b5;
+  --danger-fill: #2a1a19;
+
+  --focus: #f5f5f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
