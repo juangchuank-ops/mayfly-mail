@@ -52,6 +52,8 @@ export interface MailProvider {
   createMailbox(): Promise<Mailbox>;
   /** 用已保存的凭据恢复邮箱；失效时抛 kind:"auth"。 */
   restoreMailbox(credentials: Record<string, string>): Promise<Mailbox>;
+  /** 预置凭据（不立即登录）；不支持时返回 false。 */
+  seedCredentials?(credentials: Record<string, string>): boolean;
   /** 尝试完成登录/开通；已就绪或本次成功返回 true。 */
   provision(): Promise<boolean>;
   listMessages(): Promise<MessageSummary[]>;

@@ -18,28 +18,40 @@ npm run lint       # oxlint
 
 ## 数据源与后端接入
 
-应用通过 `src/lib/types.ts` 里定义的 `MailProvider` 接口对接数据源，内置两份实现：
+应用通过 `src/lib/types.ts` 里定义的 `MailProvider` 接口对接数据源，支持**多个数据源、多个邮箱**并存：
+铭牌右上角的「邮箱 n」切换器列出所有邮箱（标注来源与未读数），可新建、切换、移除；
+「管理数据源」对话框用于添加/测试/删除自建数据源。
 
-- **`src/lib/mailtm.ts`** — 真实数据源，对接 [mail.tm](https://docs.mail.tm) 公共 API
-  （创建邮箱、收件箱、邮件详情、完整原始 MIME、已读/删除）。
-  mail.tm 的 CORS 白名单不允许浏览器直连，因此开发与预览由 Vite 内置代理
-  （`vite.config.ts` 中 `/api → https://api.mail.tm`）转发。
-- **`src/lib/demo.ts`** — 演示模式。仅当无法连接邮件服务（或访问 `?demo=1`）时启用，
+### 内置公共源
+
+- **`src/lib/mailtm.ts`** — mail.tm 公共 API。其 CORS 白名单不允许浏览器直连，
+  开发与预览由 Vite 内置代理（`vite.config.ts` 中 `/api → https://api.mail.tm`）转发；
+  生产环境用 `VITE_MAIL_API_BASE` 指向自建反代。
+
+### 自建数据源（在「管理数据源」中添加）
+
+| 类型 | 接口契约 | 令牌 |
+|---|---|---|
+| **Cloudflare Worker**（域名 + Email Routing + Worker 收信，如 `cloudflare_temp_email` 部署） | `GET /open_api/settings`（读域名，旧部署回退 `GET /settings`）、`POST /api/new_address`、`GET /api/mails`、`DELETE /api/mails/{id}` | 管理令牌可选：用于读取设置与删除邮件；收信用地址级 JWT（Worker 返回） |
+| **mail.tm 兼容** | `GET /domains`、`POST /accounts`、`POST /token`、`GET /messages`、`GET /messages/{id}`、`GET /messages/{id}/download`、`PATCH /messages/{id}` | 静态令牌可选：填写后所有请求带 `Authorization: Bearer <token>` 并跳过 `/token` 登录（适配带网关令牌的后端）；留空则走 mail.tm 原生登录 |
+
+实现分别位于 `src/lib/cloudflare.ts`（含轻量 MIME 解析 `src/lib/mime.ts`，从原始报文提取正文/验证码）与 `src/lib/mailtm.ts`。
+
+注意事项：
+
+- 浏览器直连自建地址需要后端开启 CORS；HTTPS 页面无法请求 HTTP 接口（混合内容限制），
+  必要时请用反向代理把自建源挂在同源路径下。
+- Cloudflare 源没有服务端「已读」概念，已读/未读状态保存在本机 localStorage。
+- 凭据（地址/密码/JWT/令牌）只保存在浏览器 localStorage，不经过任何第三方。
+
+### 演示模式
+
+- **`src/lib/demo.ts`** — 仅当无法连接邮件服务（或访问 `?demo=1`）时启用，
   界面有明确的「演示模式」横幅与「演示」状态标记，全部为本地模拟数据，不冒充真实邮件。
-
-部署到生产时，把环境变量 `VITE_MAIL_API_BASE` 指向自建后端或反向代理（转发到 mail.tm），
-即可脱离 Vite 运行。凭据（地址/密码/token）只保存在浏览器 localStorage，不经过任何第三方。
-
-### 已知边界
-
-- mail.tm 建号接口限流约 1 次/分钟；被限流时会显示明确错误并可重试。
-- 服务端会将地址本地部分中的点号剥离，登录一律以创建接口返回的规范地址为准。
-- 收件箱分页：每次刷新最多拉取 3 页（约 90 封），超出部分不再加载（临时邮箱场景足够）。
-- 邮件里的远程图片默认不加载（隐私），正文区提供「显示图片」按钮；HTML 邮件经
-  DOMPurify 消毒后渲染在无脚本的 sandbox iframe 中。
 
 ## 功能
 
+- **多数据源 / 多邮箱**：多个自建源并存，每个邮箱标注所属来源与未读数；切换、新建（可选源）、移除
 - 一键复制地址（含复制反馈）、15 秒自动轮询收件箱（页面隐藏时暂停）、手动刷新
 - 更换地址（确认对话框，旧地址作废提示）、过期/限流/断网等状态的明确反馈
 - 邮件列表：发件人、主题、摘要、时间、未读圆点 + 加粗（不单靠颜色区分）
@@ -54,9 +66,11 @@ npm run lint       # oxlint
 
 ```
 src/
-  lib/        数据适配层（types / mailtm / demo）与业务逻辑（验证码识别、HTML 消毒、时间、剪贴板）
-  hooks/      useTheme（主题记忆）、useMailbox（邮箱状态机：建号/恢复/轮询/开通等待/深链）
-  components/ AddressPlate（地址铭牌）、MailList、Reader、CodeStrip、RawView、ConfirmDialog、Toast
+  lib/        数据适配层（types / mailtm / cloudflare / demo）
+              与业务逻辑（验证码识别、MIME 轻解析、HTML 消毒、时间、剪贴板）
+  hooks/      useTheme（主题记忆）、useMailbox（多源多邮箱状态机：建号/恢复/切换/轮询/开通等待/深链）
+  components/ AddressPlate（地址铭牌）、MailboxSwitcher（邮箱切换器）、SourceDialog（数据源管理）、
+              MailList、Reader、CodeStrip、RawView、ConfirmDialog、Toast
   styles/     tokens.css（设计令牌：灰阶、字体、间距、双主题）+ app.css（组件样式）
 ```
 

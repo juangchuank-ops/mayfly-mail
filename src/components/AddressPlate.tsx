@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Copy, Check, RefreshCw, FlaskConical, TriangleAlert } from "lucide-react";
 import { copyText } from "../lib/clipboard";
 import type { Mailbox } from "../lib/types";
@@ -11,6 +11,10 @@ interface Props {
   bootError: string | null;
   creating: boolean;
   creatingReal: boolean;
+  /** 铭牌右侧的邮箱切换器（多数据源 / 多邮箱）。 */
+  switcher?: ReactNode;
+  /** 当前邮箱所属数据源名（demo 条目显示「演示」）。 */
+  sourceName?: string | null;
   onCopyFeedback: (text: string, error?: boolean) => void;
   onNewAddress: () => void;
   /** 错误态下的直接重试（无需确认）。 */
@@ -25,6 +29,8 @@ export function AddressPlate({
   bootError,
   creating,
   creatingReal,
+  switcher,
+  sourceName,
   onCopyFeedback,
   onNewAddress,
   onRetryCreate,
@@ -83,8 +89,9 @@ export function AddressPlate({
     <section className="plate-zone" aria-label="当前临时邮箱地址">
       <div className="plate">
         <div className="plate-head">
-          <span className="plate-label">当前地址</span>
+          <span className="plate-label">当前地址{sourceName ? ` · ${sourceName}` : ""}</span>
           {chip}
+          {switcher}
         </div>
 
         {statusLine}

@@ -3,18 +3,25 @@ import { FlaskConical, Mail, Moon, RefreshCw, Sun } from "lucide-react";
 import { useTheme } from "./hooks/useTheme";
 import { useMailbox } from "./hooks/useMailbox";
 import { AddressPlate } from "./components/AddressPlate";
+import { MailboxSwitcher } from "./components/MailboxSwitcher";
+import { SourceDialog } from "./components/SourceDialog";
 import { MailList } from "./components/MailList";
 import { Reader } from "./components/Reader";
 import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 
-type ConfirmTarget = { kind: "new-address" } | { kind: "delete"; id: string } | null;
+type ConfirmTarget =
+  | { kind: "new-address" }
+  | { kind: "delete"; id: string }
+  | { kind: "remove-box"; boxId: string }
+  | null;
 
 export default function App() {
   const { theme, toggle } = useTheme();
   const mb = useMailbox();
   const [confirm, setConfirm] = useState<ConfirmTarget>(null);
   const [retrying, setRetrying] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   useEffect(() => {
     void mb.bootstrap();
@@ -86,11 +93,35 @@ export default function App() {
             bootError={mb.bootError}
             creating={mb.creating}
             creatingReal={retrying}
+            sourceName={mb.activeSourceName}
             onCopyFeedback={mb.notify}
             onNewAddress={() => setConfirm({ kind: "new-address" })}
             onRetryCreate={() => void mb.createNewMailbox()}
             onRetryReal={() => void retryReal()}
             onEnterDemo={() => void mb.enterDemo()}
+            switcher={
+              <MailboxSwitcher
+                rows={mb.entries.map((e) => ({
+                  id: e.id,
+                  address: e.address,
+                  sourceName:
+                    e.mode === "demo"
+                      ? "演示"
+                      : (mb.sources.find((s) => s.id === e.sourceId)?.name ?? "未知来源"),
+                  mode: e.mode,
+                  unread: e.id === mb.activeId ? mb.unreadCount : (mb.unreadByBox[e.id] ?? null),
+                  active: e.id === mb.activeId,
+                }))}
+                realSources={mb.sources.map((s) => ({ id: s.id, name: s.name }))}
+                busy={mb.creating || mb.switching}
+                syncing={mb.syncingCounts}
+                onSwitch={(id) => void mb.switchTo(id)}
+                onCreate={(sourceId) => void mb.addMailbox(sourceId)}
+                onRemove={(id) => setConfirm({ kind: "remove-box", boxId: id })}
+                onManageSources={() => setSourcesOpen(true)}
+                onOpen={() => void mb.syncCounts()}
+              />
+            }
           />
           <MailList
             messages={mb.messages}
@@ -141,20 +172,42 @@ export default function App() {
 
       <ConfirmDialog
         open={confirm !== null}
-        title={confirm?.kind === "delete" ? "删除这封邮件？" : "更换邮箱地址？"}
+        title={
+          confirm?.kind === "delete"
+            ? "删除这封邮件？"
+            : confirm?.kind === "remove-box"
+              ? "移除这个邮箱？"
+              : "更换邮箱地址？"
+        }
         body={
           confirm?.kind === "delete"
             ? "删除后无法恢复。如果只是想稍后再看，可以先「标记未读」。"
-            : "会生成一个全新的地址，旧地址立即作废，里面已有的邮件将无法找回。"
+            : confirm?.kind === "remove-box"
+              ? "移除后本机不再保存它的凭据，该地址将无法继续收信（服务端的邮件仍保留在自建服务里）。"
+              : "会为当前数据源生成一个全新的地址并立即切换，旧地址立即作废，里面已有的邮件将无法找回。"
         }
-        confirmText={confirm?.kind === "delete" ? "删除" : "生成新地址"}
+        confirmText={
+          confirm?.kind === "delete" ? "删除" : confirm?.kind === "remove-box" ? "移除" : "生成新地址"
+        }
         onConfirm={() => {
           if (!confirm) return;
           if (confirm.kind === "delete") void mb.removeMessage(confirm.id);
+          else if (confirm.kind === "remove-box") void mb.removeBox(confirm.boxId);
           else void mb.createNewMailbox();
           setConfirm(null);
         }}
         onCancel={() => setConfirm(null)}
+      />
+
+      <SourceDialog
+        open={sourcesOpen}
+        sources={mb.sources}
+        onClose={() => setSourcesOpen(false)}
+        onAdd={(s) => {
+          mb.addSource(s);
+          mb.notify(`数据源「${s.name}」已添加`);
+        }}
+        onDelete={(id) => void mb.deleteSource(id)}
       />
     </div>
   );
